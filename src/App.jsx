@@ -16,20 +16,30 @@ function App() {
 
   const analyze = async () => {
   if (!text.trim()) return
+
   setLoading(true)
+
   try {
-    const response = await fetch("http://localhost:8080/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text })
-    })
+    const response = await fetch(
+      "https://news-fact-checker-backend-production-8e03.up.railway.app/api/analyze",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text }),
+      }
+    )
+
     const data = await response.json()
+
     const entry = {
       id: Date.now(),
       headline: text.length > 80 ? text.slice(0, 80) + "…" : text,
       time: "Just now",
-      result: data
+      result: data,
     }
+
     const updated = [entry, ...history]
     setHistory(updated)
     localStorage.setItem("factcheck-history", JSON.stringify(updated))
@@ -38,6 +48,7 @@ function App() {
   } catch (err) {
     console.error("Error:", err)
   }
+
   setLoading(false)
 }
 
