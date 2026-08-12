@@ -1,5 +1,6 @@
 import { useState } from "react"
 import "./App.css"
+import Login from "./Login"
 
 const scoreColor = (s) => s >= 70 ? "#4ade80" : s >= 40 ? "#fbbf24" : "#f87171"
 const scoreBg = (s) => s >= 70 ? "#1a3a1a" : s >= 40 ? "#3a2e0a" : "#3a0a0a"
@@ -8,49 +9,59 @@ const pillClass = (s) => s >= 70 ? "score-pill pill-green" : s >= 40 ? "score-pi
 function App() {
   const [text, setText] = useState("")
   const [history, setHistory] = useState(() => {
-  const saved = localStorage.getItem("factcheck-history")
-  return saved ? JSON.parse(saved) : []
-})
+    const saved = localStorage.getItem("factcheck-history")
+    return saved ? JSON.parse(saved) : []
+  })
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [user, setUser] = useState(() => {
+    const token = localStorage.getItem("token")
+    const name = localStorage.getItem("userName")
+    return token ? { token, name } : null
+  })
+
+  const handleLogin = (data) => {
+    setUser({ token: data.token, name: data.name })
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem("token")
+    localStorage.removeItem("userName")
+    localStorage.removeItem("factcheck-history")
+    setUser(null)
+    setHistory([])
+    setSelected(null)
+  }
 
   const analyze = async () => {
-  if (!text.trim()) return
-
-  setLoading(true)
-
-  try {
-    const response = await fetch(
-      "https://news-fact-checker-backend-production-8e03.up.railway.app/api/analyze",
-      {
+    if (!text.trim()) return
+    setLoading(true)
+    try {
+      const response = await fetch("http://localhost:8080/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${user.token}`
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text })
+      })
+      const data = await response.json()
+      const entry = {
+        id: Date.now(),
+        headline: text.length > 80 ? text.slice(0, 80) + "…" : text,
+        time: "Just now",
+        result: data
       }
-    )
-
-    const data = await response.json()
-
-    const entry = {
-      id: Date.now(),
-      headline: text.length > 80 ? text.slice(0, 80) + "…" : text,
-      time: "Just now",
-      result: data,
+      const updated = [entry, ...history]
+      setHistory(updated)
+      localStorage.setItem("factcheck-history", JSON.stringify(updated))
+      setSelected(entry)
+      setText("")
+    } catch (err) {
+      console.error("Error:", err)
     }
-
-    const updated = [entry, ...history]
-    setHistory(updated)
-    localStorage.setItem("factcheck-history", JSON.stringify(updated))
-    setSelected(entry)
-    setText("")
-  } catch (err) {
-    console.error("Error:", err)
+    setLoading(false)
   }
-
-  setLoading(false)
-}
 
   const dims = selected ? [
     { label: "Source reliability", value: selected.result.scores.sourceReliability },
@@ -59,13 +70,23 @@ function App() {
     { label: "Claim verifiability", value: selected.result.scores.claimVerifiability },
   ] : []
 
+  if (!user) return <Login onLogin={handleLogin} />
+
   return (
     <div className="app">
-      {/* LEFT SIDEBAR */}
       <div className="sidebar">
         <div className="sidebar-header">
           <span className="logo">FactCheck</span>
           <span className="badge">AI</span>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "12px", color: "#aaa" }}>Hi, {user.name}</span>
+            <button
+              onClick={handleLogout}
+              style={{ fontSize: "11px", padding: "4px 10px", background: "#3a0a0a", color: "#f87171", border: "none", borderRadius: "6px", cursor: "pointer" }}
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         <div className="paste-section">
@@ -74,11 +95,7 @@ function App() {
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
-          <button
-            className="analyze-btn"
-            onClick={analyze}
-            disabled={loading}
-          >
+          <button className="analyze-btn" onClick={analyze} disabled={loading}>
             {loading ? "Analyzing..." : "Analyze ↗"}
           </button>
         </div>
@@ -107,7 +124,6 @@ function App() {
         )}
       </div>
 
-      {/* RIGHT MAIN */}
       <div className="main">
         {!selected && !loading && (
           <div className="empty-state">
@@ -131,7 +147,6 @@ function App() {
             </div>
 
             <div className="main-body">
-              {/* Overall score */}
               <div className="overall-box">
                 <div className="big-score">
                   {selected.result.overallScore}<span>/100</span>
@@ -144,44 +159,28 @@ function App() {
                 </div>
               </div>
 
-              {/* Dimension scores */}
               <div className="dims">
                 {dims.map((dim) => (
                   <div key={dim.label} className="dim-card">
                     <div className="dim-name">{dim.label}</div>
-                    <div className="dim-score">
-                      {dim.value}<span>/100</span>
-                    </div>
+                    <div className="dim-score">{dim.value}<span>/100</span></div>
                     <div className="bar-bg">
-                      <div
-                        className="bar-fill"
-                        style={{ width: `${dim.value}%`, background: scoreColor(dim.value) }}
-                      />
+                      <div className="bar-fill" style={{ width: `${dim.value}%`, background: scoreColor(dim.value) }} />
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Claims */}
               <div className="claims-label">Claim Analysis</div>
               <div className="claims">
                 {selected.result.claims.map((claim, i) => (
                   <div key={i} className="claim-item">
-                    <span
-                      className="claim-icon"
-                      style={{ color: scoreColor(claim.status === "VERIFIED" ? 80 : claim.status === "MIXED" ? 50 : 20) }}
-                    >
+                    <span className="claim-icon" style={{ color: scoreColor(claim.status === "VERIFIED" ? 80 : claim.status === "MIXED" ? 50 : 20) }}>
                       {claim.status === "VERIFIED" ? "✓" : claim.status === "MIXED" ? "⚠" : "✗"}
                     </span>
                     <div>
                       <div>{claim.claim}</div>
-                      <span
-                        className="status-pill"
-                        style={{
-                          background: scoreBg(claim.status === "VERIFIED" ? 80 : claim.status === "MIXED" ? 50 : 20),
-                          color: scoreColor(claim.status === "VERIFIED" ? 80 : claim.status === "MIXED" ? 50 : 20)
-                        }}
-                      >
+                      <span className="status-pill" style={{ background: scoreBg(claim.status === "VERIFIED" ? 80 : claim.status === "MIXED" ? 50 : 20), color: scoreColor(claim.status === "VERIFIED" ? 80 : claim.status === "MIXED" ? 50 : 20) }}>
                         {claim.status}
                       </span>
                     </div>
